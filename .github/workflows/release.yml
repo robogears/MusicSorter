@@ -95,12 +95,14 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f
 
-      - name: Publish to GitHub Releases
+      - name: Publish to GitHub Releases (as draft)
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/MusicSorter-windows/MusicSorter.exe
             artifacts/MusicSorter-macos/MusicSorter-macos.zip
           generate_release_notes: true
-          draft: false
+          # Lands as a draft so you can review the binaries + edit notes
+          # before clicking "Publish release" yourself on the Releases page.
+          draft: true
           prerelease: false
