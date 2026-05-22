@@ -61,6 +61,14 @@ ART_SIZE = 88
 PAGE_SIZE = 30
 PLAYBACK_OK_EXTS = {".mp3", ".flac", ".wav", ".ogg", ".opus"}
 WAVE_BARS = 64
+
+# Default Last.fm API key shipped with the build. Users who want their own
+# (e.g. to avoid the shared rate limit) can put a different one in config.json.
+DEFAULT_LASTFM_API_KEY = "25da7294f1c679210c7e12bfda4b2f2e"
+
+DEFAULT_AUDIO_EXTS = [
+    ".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".wma", ".mp4",
+]
 # Perceptual volume curve: applied = slider ** N. Higher N = quieter at low slider.
 VOLUME_CURVE_POW = 3.0
 
@@ -85,10 +93,36 @@ def app_dir() -> Path:
     return Path(__file__).parent
 
 
+def _default_config() -> dict:
+    home = Path.home()
+    return {
+        "downloads_path": str(home / "Downloads"),
+        "music_root": str(home / "Music"),
+        "lastfm_api_key": DEFAULT_LASTFM_API_KEY,
+        "audio_extensions": list(DEFAULT_AUDIO_EXTS),
+        "scan_subfolders": False,
+    }
+
+
 def load_config():
     cfg_path = app_dir() / "config.json"
+    # First launch: write a sensible default config next to the executable
+    # so the user can just double-click the .exe and have it work.
+    if not cfg_path.exists():
+        config = _default_config()
+        try:
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2)
+        except OSError:
+            pass
+        return config
     with open(cfg_path, encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+    # Fall back to the baked-in key when the user hasn't supplied one.
+    key = (config.get("lastfm_api_key") or "").strip()
+    if not key or key.startswith("YOUR_"):
+        config["lastfm_api_key"] = DEFAULT_LASTFM_API_KEY
+    return config
 
 
 def extract_metadata(filepath: Path):
@@ -1361,10 +1395,6 @@ def collect_files(config):
 
 def main():
     config = load_config()
-    if not config.get("lastfm_api_key") or config["lastfm_api_key"].startswith("YOUR_"):
-        print("ERROR: Set lastfm_api_key in config.json")
-        print("Get a free key at: https://www.last.fm/api/account/create")
-        sys.exit(1)
     music_root = Path(config["music_root"])
     if not music_root.is_dir():
         print(f"ERROR: Music folder not found: {music_root}")
