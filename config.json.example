@@ -1,0 +1,17 @@
+{
+  "downloads_path": "C:\\Users\\YOU\\Downloads",
+  "music_root": "C:\\Users\\YOU\\Music",
+  "lastfm_api_key": "YOUR_LASTFM_API_KEY_HERE",
+  "audio_extensions": [
+    ".mp3",
+    ".flac",
+    ".m4a",
+    ".wav",
+    ".ogg",
+    ".opus",
+    ".aac",
+    ".wma",
+    ".mp4"
+  ],
+  "scan_subfolders": false
+}
