@@ -2,20 +2,21 @@
 
 ## Release workflow
 
-**Every push that ships a user-visible change must:**
+**Source of truth: [`ship.md`](ship.md).** Read it before any release work and
+follow the sequence exactly. Highlights you must internalize:
 
-1. **Bump the patch version** — don't reuse / force-move an existing tag.
-   Past tags: `v0.1.0`, `v0.1.2`. Next is `v0.1.3`, then `v0.1.4`, etc.
-   Bump the minor (`v0.2.0`) only for substantial feature batches.
-2. **Update [`RELEASE_NOTES.md`](RELEASE_NOTES.md)** with a "What's new in vX.Y.Z"
-   section at the top describing the changes. Older sections stay below as
-   recap context — the file accumulates across releases.
-3. **Commit + push to `main`**, then create the new annotated tag and push it.
-   Tag-push triggers `.github/workflows/release.yml` which builds Windows +
-   macOS binaries and creates a **draft** release.
-4. **Always leave the release as a draft** — the workflow already sets
-   `draft: true`. The user clicks "Publish release" manually on GitHub
-   after reviewing the binaries and notes. Never change that to false.
+- Never ship without an explicit user instruction ("ship it", "release", etc.).
+  Code changes outside that flow stop at the edit + smoke-test.
+- Version lives in `APP_VERSION` (top of [`sorter.py`](sorter.py)). Patch-bump
+  by default; never force-move a published tag.
+- `RELEASE_NOTES.md` is **overwritten** every release — no cumulative sections.
+  The required structure (What's new → Install → Requirements → Full Changelog
+  link) is mandatory; the GitHub Actions workflow's `body_path` consumer
+  depends on it.
+- `draft: true` in `.github/workflows/release.yml` stays — every release lands
+  as a draft for the user to review and Publish manually.
+- After CI completes, verify `gh release view vX.Y.Z --json body --jq '(.body | length)'`
+  and fix with `gh release edit … --notes-file RELEASE_NOTES.md` if empty.
 
 ## Build outputs
 

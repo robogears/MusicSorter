@@ -1,41 +1,34 @@
-# What's new in v0.1.2
+# What's new in v0.1.3
 
-## Live folder refresh
-- Changing the Downloads path (or toggling the subfolder-scan setting) and
-  clicking Save now re-scans automatically. No more relaunching for new
-  songs to show up.
+## UI overhaul to match the robogears family
+- Title bar now reads `[dude] robogears MusicSorter v0.1.3` with a small ASCII-dude logo and a warm-tinted version stamp.
+- Settings dialog rebuilt to match the Downloader: ALL-CAPS section labels, taller rounded entries, outlined Browse buttons, inline `Clear`, indexed-folder count with Refresh, and a single white `Done` button.
+- Main window picks up `QUEUE` and `ACTIVITY` section headers; the status line is now a monospaced activity log.
+- Settings cog is slimmer and lighter; volume cluster compacted into the title bar.
 
-## Smarter folder suggestions
-- When you create a new genre folder via `+ New` (e.g. "Rap"), the suggestion
-  immediately propagates to every other unassigned row whose top tag matches.
-  Manual selections stay put.
+## Last.fm tag-lookup improvements
+- "(feat. X)", "[Remix]", "(Sped Up)" and similar suffixes are stripped from track titles before re-querying Last.fm, so common download-naming quirks no longer kill the genre suggestion.
+- When a lookup fails the row now shows the actual reason (e.g. *"Last.fm lookup failed: HTTP 400"*) instead of a vague "no genre" message.
+- Playback library import failures surface the real exception in the status bar.
 
-## Clearer playback errors
-- If the audio library fails to load, the status bar now shows the actual
-  import exception instead of just "unavailable".
-
-## macOS support
-- Apple Silicon `.app` bundle now ships alongside the Windows `.exe`.
-
----
-
-# Recap of earlier 0.1.x changes
-
-- Zero-setup launch: ships with a built-in Last.fm key, auto-creates `config.json`
-- Per-user config location (`%APPDATA%\MusicSorter` on Windows,
-  `~/Library/Application Support/MusicSorter` on macOS)
-- Settings dialog: masked Last.fm key with Edit / Reset, "Reset config" button
-  for forgetting saved paths
-- ASCII dancing-dude window/app icon
-- Reactive waveform: live amplitude ripple around the playhead, click to seek,
-  hold-and-drag to scrub
-- Volume slider with perceptual (power-3) curve
+## Smaller stuff
+- Last.fm API key is no longer user-editable — the bundled key is always used and `config.json` never carries the key string.
+- The old "Reset config" button is gone; each path field has its own `Clear` link instead.
 
 ---
 
 # Install
 
-- **Windows**: download `MusicSorter.exe`, double-click.
-- **macOS** (Apple Silicon): download `MusicSorter-macos.zip`, unzip, drag
-  `MusicSorter.app` to `/Applications`. On first launch right-click → Open
-  to bypass Gatekeeper (the app isn't code-signed).
+- **Windows**: download `MusicSorter.exe` and double-click. SmartScreen may flag the unsigned binary on first launch — choose *"More info"* → *"Run anyway"*.
+- **macOS** (Apple Silicon): download `MusicSorter-macos.zip`, unzip, drag `MusicSorter.app` to `/Applications`. On first launch right-click → Open to bypass Gatekeeper (the app isn't code-signed).
+
+Config lives at `%APPDATA%\MusicSorter\config.json` (Windows) or `~/Library/Application Support/MusicSorter/config.json` (macOS).
+
+## Requirements
+
+- Windows 10+ or macOS 12+ (Apple Silicon)
+- Internet connection for Last.fm genre lookups. The bundled API key is shared across all users; if you hit the ~5 req/s rate limit, lookups will silently fall back to artist-level tags.
+
+---
+
+**Full Changelog**: https://github.com/robogears/MusicSorter/compare/v0.1.2...v0.1.3

@@ -64,6 +64,7 @@ ART_SIZE = 88
 PAGE_SIZE = 30
 PLAYBACK_OK_EXTS = {".mp3", ".flac", ".wav", ".ogg", ".opus"}
 WAVE_BARS = 64
+APP_VERSION = "0.1.3"  # bump per CLAUDE.md before each tag push
 
 # Default Last.fm API key shipped with the build. Users who want their own
 # (e.g. to avoid the shared rate limit) can put a different one in config.json.
@@ -234,7 +235,21 @@ def compute_waveform(filepath: Path, n_bars: int = WAVE_BARS):
         return None
 
 
+# Last error text from the most recent lastfm_get call. Surfaced in the UI
+# when get_tags ends up returning no tags so it isn't a silent failure.
+_LASTFM_LAST_ERROR: str | None = None
+
+
 def lastfm_get(method, api_key, **params):
+    """Wrapper around the Last.fm 2.0 JSON API.
+    Returns the parsed dict on success, or None on any failure. The reason is
+    stashed in `_LASTFM_LAST_ERROR` so callers can surface it instead of
+    silently falling through.
+    """
+    global _LASTFM_LAST_ERROR
+    if not api_key:
+        _LASTFM_LAST_ERROR = "no API key configured"
+        return None
     params["method"] = method
     params["api_key"] = api_key
     params["format"] = "json"
@@ -242,8 +257,21 @@ def lastfm_get(method, api_key, **params):
     req = Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urlopen(req, timeout=12) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except (URLError, HTTPError, json.JSONDecodeError, TimeoutError):
+            data = json.loads(resp.read().decode("utf-8"))
+        # Last.fm sometimes returns 200 with {"error": N, "message": "..."}
+        if isinstance(data, dict) and data.get("error"):
+            _LASTFM_LAST_ERROR = str(data.get("message") or f"error {data['error']}")
+            return None
+        _LASTFM_LAST_ERROR = None
+        return data
+    except HTTPError as e:
+        _LASTFM_LAST_ERROR = f"HTTP {e.code}"
+        return None
+    except URLError as e:
+        _LASTFM_LAST_ERROR = f"network: {e.reason}"
+        return None
+    except (json.JSONDecodeError, TimeoutError) as e:
+        _LASTFM_LAST_ERROR = f"{type(e).__name__}: {e}"
         return None
 
 
@@ -266,18 +294,40 @@ def _parse_tags(payload):
     return out
 
 
+_TITLE_NORMALIZE_RE = re.compile(r"\s*[\(\[][^)\]]*[\)\]]")
+_FEAT_RE = re.compile(r"\s*(feat\.?|ft\.?|featuring)\s+.+$", re.IGNORECASE)
+
+
+def _clean_title(title: str) -> str:
+    """Strip "(feat. X)", "[Remix]", "(Sped Up)" etc. — common noise in
+    downloads that prevents Last.fm from matching the canonical track."""
+    s = _TITLE_NORMALIZE_RE.sub("", title)
+    s = _FEAT_RE.sub("", s)
+    return s.strip()
+
+
 def get_tags(artist, title, api_key):
     tags = []
+    tried_clean = False
     if artist and title:
         tags = _parse_tags(lastfm_get(
             "track.getTopTags", api_key,
             artist=artist, track=title, autocorrect=1,
         ))
+        if not tags:
+            clean = _clean_title(title)
+            if clean and clean.lower() != title.lower():
+                tried_clean = True
+                tags = _parse_tags(lastfm_get(
+                    "track.getTopTags", api_key,
+                    artist=artist, track=clean, autocorrect=1,
+                ))
     if not tags and artist:
         tags = _parse_tags(lastfm_get(
             "artist.getTopTags", api_key,
             artist=artist, autocorrect=1,
         ))
+    _ = tried_clean  # reserved for future diagnostics
     tags.sort(key=lambda x: x[1], reverse=True)
     return tags
 
@@ -494,8 +544,9 @@ class FileRow(ctk.CTkFrame):
         )
         self.art_label.configure(image=self._art_image)
 
-    def set_tags(self, tags):
+    def set_tags(self, tags, error_msg: str | None = None):
         self.tags = tags
+        self.lookup_error = error_msg
         for w in self.chips_frame.winfo_children():
             w.destroy()
         if not tags:
@@ -530,7 +581,12 @@ class FileRow(ctk.CTkFrame):
             self.suggest_label.configure(text_color=WARNING)
             self.folder_var.set("")
         else:
-            self.suggest_var.set("No genre info found. Pick or create a folder.")
+            err = getattr(self, "lookup_error", None)
+            if err:
+                msg = f"Last.fm lookup failed: {err}"
+            else:
+                msg = "No genre info found. Pick or create a folder."
+            self.suggest_var.set(msg)
             self.suggest_label.configure(text_color=DANGER)
             self.folder_var.set("")
 
@@ -798,7 +854,7 @@ class SorterApp(ctk.CTk):
         self._dude_pose_idx = 0
         self._dude_last_beat = -1
 
-        self.title("Music Sorter")
+        self.title(f"robogears MusicSorter v{APP_VERSION}")
         self.geometry("960x920")
         self.minsize(820, 640)
         self.configure(fg_color=BG)
@@ -839,22 +895,42 @@ class SorterApp(ctk.CTk):
 
         title_row = ctk.CTkFrame(header, fg_color="transparent")
         title_row.pack(fill="x")
-        title_row.grid_columnconfigure(1, weight=1)
+        title_row.grid_columnconfigure(2, weight=1)
+
+        # Small logo (the same little dude that's on the window/.exe icon)
+        try:
+            logo_img = Image.open(str(resource_path("icon.png"))).convert("RGBA")
+            self._title_logo = ctk.CTkImage(
+                light_image=logo_img, dark_image=logo_img, size=(26, 26),
+            )
+            ctk.CTkLabel(title_row, image=self._title_logo, text="").grid(
+                row=0, column=0, sticky="w", padx=(0, 10)
+            )
+        except Exception:
+            pass
 
         ctk.CTkLabel(
-            title_row, text="Music Sorter",
-            font=ctk.CTkFont(size=24, weight="bold"),
+            title_row, text="robogears MusicSorter",
+            font=ctk.CTkFont(size=18, weight="bold"),
             text_color=TEXT,
-        ).grid(row=0, column=0, sticky="w")
+        ).grid(row=0, column=1, sticky="w")
 
-        vol_frame = ctk.CTkFrame(title_row, fg_color="transparent")
-        vol_frame.grid(row=0, column=1, sticky="e", padx=(20, 20))
         ctk.CTkLabel(
-            vol_frame, text="Volume",
-            font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
-        ).pack(side="left", padx=(0, 10))
+            title_row, text=f"v{APP_VERSION}",
+            font=ctk.CTkFont(size=11),
+            text_color="#c1a87a",  # subtle warm accent for the version stamp
+        ).grid(row=0, column=2, sticky="w", padx=(8, 0))
+
+        # Volume cluster — pushed right but smaller than before so the title bar
+        # reads as branding first.
+        vol_frame = ctk.CTkFrame(title_row, fg_color="transparent")
+        vol_frame.grid(row=0, column=3, sticky="e", padx=(20, 10))
+        ctk.CTkLabel(
+            vol_frame, text="VOL",
+            font=ctk.CTkFont(size=9, weight="bold"), text_color=TEXT_MUTED,
+        ).pack(side="left", padx=(0, 8))
         self.volume_slider = ctk.CTkSlider(
-            vol_frame, from_=0, to=1, width=140, height=14,
+            vol_frame, from_=0, to=1, width=110, height=12,
             progress_color=TEXT, button_color=TEXT,
             button_hover_color="#dddddd", fg_color=SURFACE_3,
             command=self._on_volume_change,
@@ -864,32 +940,41 @@ class SorterApp(ctk.CTk):
         self.volume_pct_var = ctk.StringVar(value=f"{int(self.volume * 100)}%")
         ctk.CTkLabel(
             vol_frame, textvariable=self.volume_pct_var,
-            font=ctk.CTkFont(size=10, family="Consolas"),
-            text_color=TEXT_MUTED, width=36, anchor="e",
-        ).pack(side="left", padx=(10, 0))
+            font=ctk.CTkFont(size=9, family="Consolas"),
+            text_color=TEXT_MUTED, width=32, anchor="e",
+        ).pack(side="left", padx=(6, 0))
+
+        # Settings cog — slimmer, no border, sits flush on the right
+        ctk.CTkButton(
+            title_row, text="⚙", width=30, height=30,
+            fg_color="transparent", hover_color=SURFACE_3,
+            text_color=TEXT_MUTED, font=ctk.CTkFont(size=16),
+            command=self.open_settings,
+        ).grid(row=0, column=4, sticky="e")
 
         self.progress_var = ctk.StringVar(value=f"0 done / {self.total}")
-        ctk.CTkLabel(
-            title_row, textvariable=self.progress_var,
-            font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
-        ).grid(row=0, column=2, sticky="e")
-
-        ctk.CTkButton(
-            title_row, text="⚙", width=34, height=34,
-            fg_color="transparent", hover_color=SURFACE_3,
-            text_color=TEXT_MUTED, font=ctk.CTkFont(size=18),
-            command=self.open_settings,
-        ).grid(row=0, column=3, sticky="e", padx=(12, 0))
 
         self.progress_bar = ctk.CTkProgressBar(
             header, height=2, progress_color=TEXT,
             fg_color=SURFACE_3, corner_radius=1,
         )
-        self.progress_bar.pack(fill="x", pady=(10, 0))
+        self.progress_bar.pack(fill="x", pady=(10, 16))
         self.progress_bar.set(0)
 
+        # Section header: "QUEUE  ... 0 DONE / 282"
+        queue_hdr = ctk.CTkFrame(header, fg_color="transparent")
+        queue_hdr.pack(fill="x", pady=(0, 6))
+        ctk.CTkLabel(
+            queue_hdr, text="QUEUE",
+            font=ctk.CTkFont(size=10, weight="bold"), text_color=TEXT_MUTED,
+        ).pack(side="left")
+        ctk.CTkLabel(
+            queue_hdr, textvariable=self.progress_var,
+            font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
+        ).pack(side="right")
+
         move_row_top = ctk.CTkFrame(header, fg_color="transparent")
-        move_row_top.pack(fill="x", pady=(16, 12))
+        move_row_top.pack(fill="x", pady=(0, 14))
         self.move_btn_top = ctk.CTkButton(
             move_row_top, text="  Move 0 tracks  →  ",
             height=42, fg_color=ACCENT_BG, hover_color=ACCENT_HOVER,
@@ -928,11 +1013,17 @@ class SorterApp(ctk.CTk):
         )
         self.move_btn_bot.pack(side="left")
 
+        ctk.CTkLabel(
+            footer, text="ACTIVITY",
+            font=ctk.CTkFont(size=10, weight="bold"), text_color=TEXT_MUTED,
+            anchor="w",
+        ).pack(fill="x", pady=(10, 4))
         self.status_var = ctk.StringVar(value="Ready")
         ctk.CTkLabel(
             footer, textvariable=self.status_var,
-            font=ctk.CTkFont(size=10), text_color=TEXT_DIM, anchor="w",
-        ).pack(fill="x", pady=(6, 0))
+            font=ctk.CTkFont(size=10, family="Consolas"),
+            text_color=TEXT, anchor="w",
+        ).pack(fill="x")
 
     def _add_rows(self, n):
         added = 0
@@ -971,7 +1062,8 @@ class SorterApp(ctk.CTk):
                 if art is not None:
                     self.after(0, lambda r=row, a=art: r.set_art(a))
                 tags = get_tags(artist, title, self.api_key)
-                self.after(0, lambda r=row, t=tags: r.set_tags(t))
+                last_err = _LASTFM_LAST_ERROR if not tags else None
+                self.after(0, lambda r=row, t=tags, e=last_err: r.set_tags(t, e))
                 # Waveform (slower, last)
                 wf = compute_waveform(row.filepath)
                 if wf is not None:
@@ -1087,198 +1179,139 @@ class SorterApp(ctk.CTk):
     def open_settings(self):
         win = ctk.CTkToplevel(self)
         win.title("Settings")
-        win.geometry("600x560")
+        win.geometry("640x620")
         win.configure(fg_color=BG)
         win.transient(self)
         win.after(50, win.grab_set)
 
         wrap = ctk.CTkFrame(win, fg_color=BG)
-        wrap.pack(fill="both", expand=True, padx=24, pady=22)
+        wrap.pack(fill="both", expand=True, padx=28, pady=22)
 
+        # ── Local helpers ──────────────────────────────────────
+        def section_label(text):
+            ctk.CTkLabel(
+                wrap, text=text,
+                font=ctk.CTkFont(size=10, weight="bold"),
+                text_color=TEXT_MUTED, anchor="w",
+            ).pack(anchor="w", fill="x", pady=(0, 6))
+
+        def helper_text(text):
+            ctk.CTkLabel(
+                wrap, text=text,
+                font=ctk.CTkFont(size=11), text_color=TEXT_DIM, anchor="w",
+                wraplength=560, justify="left",
+            ).pack(anchor="w", fill="x", pady=(8, 22))
+
+        def path_row(var, browse_title, with_clear=False):
+            row = ctk.CTkFrame(wrap, fg_color="transparent")
+            row.pack(fill="x")
+            ctk.CTkEntry(
+                row, textvariable=var, height=40,
+                fg_color=SURFACE_2, text_color=TEXT,
+                border_color=BORDER, border_width=1, corner_radius=8,
+                font=ctk.CTkFont(family="Consolas", size=11),
+            ).pack(side="left", fill="x", expand=True)
+            ctk.CTkButton(
+                row, text="Browse…", width=92, height=40,
+                fg_color=SURFACE_2, hover_color=SURFACE_3,
+                border_width=1, border_color=BORDER,
+                text_color=TEXT, font=ctk.CTkFont(size=11),
+                corner_radius=8,
+                command=lambda: self._browse_into(var, browse_title, win),
+            ).pack(side="left", padx=(8, 0))
+            if with_clear:
+                ctk.CTkButton(
+                    row, text="Clear", width=64, height=40,
+                    fg_color="transparent", hover_color=SURFACE_3,
+                    text_color=TEXT_MUTED, font=ctk.CTkFont(size=11),
+                    command=lambda: var.set(""),
+                ).pack(side="left", padx=(4, 0))
+
+        # ── Header: title + close ──────────────────────────────
+        header = ctk.CTkFrame(wrap, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 24))
         ctk.CTkLabel(
-            wrap, text="Settings",
+            header, text="Settings",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=TEXT,
-        ).pack(anchor="w", pady=(0, 18))
+        ).pack(side="left")
+        ctk.CTkButton(
+            header, text="×", width=28, height=28,
+            fg_color="transparent", hover_color=SURFACE_3,
+            text_color=TEXT_MUTED, font=ctk.CTkFont(size=20),
+            command=win.destroy,
+        ).pack(side="right")
 
-        def labeled_path_row(label_text, initial, browse_title):
-            ctk.CTkLabel(
-                wrap, text=label_text,
-                font=ctk.CTkFont(size=11), text_color=TEXT_MUTED,
-            ).pack(anchor="w")
-            row = ctk.CTkFrame(wrap, fg_color="transparent")
-            row.pack(fill="x", pady=(4, 14))
-            var = ctk.StringVar(value=initial)
-            entry = ctk.CTkEntry(
-                row, textvariable=var, height=34,
-                fg_color=SURFACE_2, text_color=TEXT,
-                border_color=BORDER, border_width=1,
-                font=ctk.CTkFont(family="Consolas", size=11),
-            )
-            entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-            ctk.CTkButton(
-                row, text="Browse…", width=84, height=34,
-                fg_color=SURFACE_3, hover_color=SURFACE_4,
-                text_color=TEXT, font=ctk.CTkFont(size=11),
-                command=lambda: self._browse_into(var, browse_title, win),
-            ).pack(side="left")
-            return var
-
-        music_var = labeled_path_row(
-            "Music root folder  (where genre subfolders live)",
-            str(self.music_root), "Pick music root folder",
-        )
-        dl_var = labeled_path_row(
-            "Downloads folder  (where new music appears)",
-            self.config_data.get("downloads_path", ""), "Pick Downloads folder",
-        )
-
+        # ── State ──────────────────────────────────────────────
+        music_var = ctk.StringVar(value=str(self.music_root))
+        dl_var = ctk.StringVar(value=self.config_data.get("downloads_path", ""))
         scan_var = ctk.BooleanVar(
             value=bool(self.config_data.get("scan_subfolders", False))
         )
+        indexed_var = ctk.StringVar(
+            value=f"{len(self.existing_folders)} genre folders indexed"
+        )
+
+        # ── DOWNLOAD FOLDER ────────────────────────────────────
+        section_label("DOWNLOAD FOLDER")
+        path_row(dl_var, "Pick Downloads folder")
+        helper_text("Where MusicSorter scans for new music to sort.")
+
+        # ── MUSIC LIBRARY FOLDER ───────────────────────────────
+        section_label("MUSIC LIBRARY FOLDER")
+        path_row(music_var, "Pick music root folder", with_clear=True)
+
+        stats_row = ctk.CTkFrame(wrap, fg_color="transparent")
+        stats_row.pack(fill="x", pady=(10, 0))
+        ctk.CTkLabel(
+            stats_row, textvariable=indexed_var,
+            font=ctk.CTkFont(size=11, weight="bold"), text_color=TEXT_MUTED,
+        ).pack(side="left")
+
+        def do_refresh():
+            p = music_var.get().strip()
+            if p and Path(p).is_dir():
+                try:
+                    folders = list_genre_folders(Path(p))
+                    indexed_var.set(f"{len(folders)} genre folders indexed")
+                except Exception:
+                    indexed_var.set("Could not scan")
+            else:
+                indexed_var.set("Set the path first")
+
+        ctk.CTkButton(
+            stats_row, text="Refresh", width=70, height=22,
+            fg_color="transparent", hover_color=SURFACE_3,
+            text_color=TEXT_MUTED, font=ctk.CTkFont(size=11),
+            command=do_refresh,
+        ).pack(side="left", padx=(14, 0))
+
+        helper_text("Destination for moved files. Each subfolder is a genre.")
+
+        # ── Scan-subfolders toggle ─────────────────────────────
         ctk.CTkCheckBox(
-            wrap, text="Scan subfolders of Downloads (requires restart)",
-            variable=scan_var, font=ctk.CTkFont(size=11),
+            wrap, text="Scan subfolders of Downloads",
+            variable=scan_var, font=ctk.CTkFont(size=12),
             text_color=TEXT, fg_color=TEXT, hover_color=ACCENT_HOVER,
             border_color=BORDER, checkmark_color=ACCENT_FG,
-        ).pack(anchor="w", pady=(0, 14))
-
+        ).pack(anchor="w", pady=(0, 4))
         ctk.CTkLabel(
-            wrap, text="Last.fm API key",
-            font=ctk.CTkFont(size=11), text_color=TEXT_MUTED,
-        ).pack(anchor="w")
+            wrap, text="Includes audio files nested inside Downloads subfolders.",
+            font=ctk.CTkFont(size=11), text_color=TEXT_DIM, anchor="w",
+        ).pack(anchor="w", fill="x", pady=(0, 12))
 
-        # Key field state. `original` holds what's currently stored in
-        # config.json (empty string = using the built-in default). `mode` is
-        # "locked" (showing dots) or "editing" (blank, accepts typing).
-        # `will_reset` is set by the Reset button — on Save we'll write "".
-        key_st = {
-            "original": (self.config_data.get("lastfm_api_key") or "").strip(),
-            "mode": "locked",
-            "will_reset": False,
-        }
-
-        key_row = ctk.CTkFrame(wrap, fg_color="transparent")
-        key_row.pack(fill="x", pady=(4, 4))
-
-        key_var = ctk.StringVar()
-        key_entry = ctk.CTkEntry(
-            key_row, textvariable=key_var, height=34,
-            fg_color=SURFACE_2, text_color=TEXT,
-            border_color=BORDER, border_width=1,
-            show="●",
-            font=ctk.CTkFont(family="Consolas", size=11),
-        )
-        key_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-
-        edit_btn = ctk.CTkButton(
-            key_row, text="Edit", width=70, height=34,
-            fg_color=SURFACE_3, hover_color=SURFACE_4,
-            text_color=TEXT, font=ctk.CTkFont(size=11),
-        )
-        edit_btn.pack(side="left", padx=(0, 6))
-
-        reset_btn = ctk.CTkButton(
-            key_row, text="Reset", width=70, height=34,
-            fg_color="transparent", hover_color=SURFACE_3,
-            border_width=1, border_color=BORDER,
-            text_color=TEXT_MUTED, font=ctk.CTkFont(size=11),
-        )
-
-        key_status_var = ctk.StringVar()
-        ctk.CTkLabel(
-            wrap, textvariable=key_status_var,
-            font=ctk.CTkFont(size=10), text_color=TEXT_DIM,
-            anchor="w", justify="left",
-        ).pack(anchor="w", fill="x", pady=(0, 14))
-
-        def refresh_key_ui():
-            has_custom = bool(key_st["original"]) and not key_st["will_reset"]
-            if key_st["mode"] == "editing":
-                key_var.set("")
-                # Unmask so the user can see what they're typing.
-                key_entry.configure(state="normal", show="")
-                key_entry.focus()
-                edit_btn.configure(text="Cancel")
-                reset_btn.pack_forget()
-                key_status_var.set(
-                    "Type your own Last.fm API key, then click Save below."
-                )
-            else:
-                key_var.set("●" * 16)
-                key_entry.configure(state="readonly", show="●")
-                edit_btn.configure(text="Edit")
-                if has_custom:
-                    reset_btn.pack(side="left")
-                    key_status_var.set("Using your custom Last.fm API key.")
-                elif key_st["will_reset"]:
-                    reset_btn.pack_forget()
-                    key_status_var.set(
-                        "Will revert to the built-in default key on Save."
-                    )
-                else:
-                    reset_btn.pack_forget()
-                    key_status_var.set("Using the built-in default key.")
-
-        def toggle_edit():
-            if key_st["mode"] == "editing":
-                key_st["mode"] = "locked"
-            else:
-                key_st["mode"] = "editing"
-                key_st["will_reset"] = False
-            refresh_key_ui()
-
-        def reset_key():
-            key_st["mode"] = "locked"
-            key_st["will_reset"] = True
-            refresh_key_ui()
-
-        edit_btn.configure(command=toggle_edit)
-        reset_btn.configure(command=reset_key)
-        refresh_key_ui()
-
+        # Last.fm key — not user-configurable, always use baked default
         def key_for_save() -> str:
-            """Decide what string to write into config.json for the key field."""
-            if key_st["mode"] == "editing":
-                typed = key_entry.get().strip()
-                return typed  # "" means revert to default
-            if key_st["will_reset"]:
-                return ""
-            return key_st["original"]
+            return ""
 
-        ctk.CTkLabel(
-            wrap, text="All changes apply immediately — the file list re-scans "
-                       "when the Downloads path or subfolder setting changes.",
-            font=ctk.CTkFont(size=10), text_color=TEXT_DIM,
-            wraplength=500, justify="left", anchor="w",
-        ).pack(anchor="w", fill="x", pady=(0, 14))
-
-        def reset_paths():
-            """Forget the configured folders — blank out the path fields. The user
-            has to pick new ones (or Cancel) before Save will accept the form.
-            """
-            music_var.set("")
-            dl_var.set("")
-
+        # ── Bottom: Done button (primary) ──────────────────────
         btn_row = ctk.CTkFrame(wrap, fg_color="transparent")
         btn_row.pack(fill="x", side="bottom")
         ctk.CTkButton(
-            btn_row, text="Reset config", width=110, height=36,
-            fg_color="transparent", hover_color=SURFACE_3,
-            border_width=1, border_color=BORDER,
-            text_color=TEXT_MUTED, font=ctk.CTkFont(size=11),
-            command=reset_paths,
-        ).pack(side="left")
-        ctk.CTkButton(
-            btn_row, text="Cancel", width=90, height=36,
-            fg_color="transparent", hover_color=SURFACE_3,
-            border_width=1, border_color=BORDER,
-            text_color=TEXT, command=win.destroy,
-        ).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(
-            btn_row, text="Save", width=90, height=36,
+            btn_row, text="Done", width=120, height=40,
             fg_color=ACCENT_BG, hover_color=ACCENT_HOVER,
-            text_color=ACCENT_FG, font=ctk.CTkFont(weight="bold"),
+            text_color=ACCENT_FG, font=ctk.CTkFont(size=13, weight="bold"),
+            corner_radius=8,
             command=lambda: self._save_settings(
                 win, music_var.get(), dl_var.get(),
                 bool(scan_var.get()), key_for_save(),
