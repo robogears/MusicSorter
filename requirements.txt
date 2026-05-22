@@ -1,1 +1,6 @@
 mutagen>=1.47
+customtkinter>=5.2
+Pillow>=10
+just_playback>=0.1.8
+miniaudio>=1.71
+numpy>=1.26
