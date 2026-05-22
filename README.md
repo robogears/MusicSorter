@@ -36,10 +36,10 @@ No setup required. The first launch creates a `config.json` pointing at your hom
 ## How it works
 
 1. Scans your Downloads folder for audio files
-2. Reads embedded artist/title tags ([mutagen](https://github.com/quodlibet/mutagen)) and computes a 64-bar amplitude envelope ([miniaudio](https://github.com/irmen/pyminiaudio))
-3. Queries Last.fm's `track.getTopTags` (falling back to `artist.getTopTags`)
-4. Matches the top tag against your existing genre folders under Music root — exact → substring → fuzzy
-5. You confirm or override the suggestion, then click Move (or batch-Move all queued)
+2. Reads each track's artist and title from its tags
+3. Asks Last.fm what genres people have tagged it with
+4. Suggests the closest match from your existing genre folders
+5. You confirm or pick a different one — then Move
 
 ## Configuration
 
@@ -50,32 +50,10 @@ No setup required. The first launch creates a `config.json` pointing at your hom
 | Windows | `%APPDATA%\MusicSorter\config.json` |
 | macOS   | `~/Library/Application Support/MusicSorter/config.json` |
 
-All settings are editable from the Settings dialog (cog icon):
+Everything is editable from the Settings dialog (cog icon):
 
 - **Music root folder** — where genre subfolders live; destination of moves
 - **Downloads folder** — source folder for the scan
 - **Scan subfolders** — recurse into Downloads subfolders
-- **Last.fm API key** — masked field with Edit / Reset; leave blank to use the built-in default key (shared rate limit; replace with your own from [last.fm/api](https://www.last.fm/api/account/create) if you hit it)
-- **Reset config** — clears Music + Downloads paths so you can re-point the app at fresh folders
-
-## Build from source
-
-Requires Python 3.12+.
-
-```bash
-git clone https://github.com/robogears/MusicSorter
-cd MusicSorter
-pip install -r requirements.txt
-python sorter.py
-```
-
-
-
-## Tech stack
-
-- **Python 3.12** + **Tkinter** / **CustomTkinter** — GUI
-- **mutagen** — audio metadata
-- **miniaudio** + **NumPy** — waveform decoding
-- **just_playback** — in-app audio playback
-- **Pillow** — icon generation and album-art handling
-- **PyInstaller** — standalone builds
+- **Last.fm API key** — masked field with Edit / Reset; leave blank to use the built-in default. Get your own at [last.fm/api](https://www.last.fm/api/account/create) if you hit the shared rate limit.
+- **Clear** (next to each path) — forgets that path so you can re-point the app at a fresh folder
