@@ -46,6 +46,8 @@ jobs:
             --collect-data customtkinter \
             --collect-binaries just_playback \
             --collect-binaries miniaudio \
+            --collect-all cffi \
+            --hidden-import _cffi_backend \
             sorter.py
 
       - name: Build (macOS)
@@ -60,6 +62,8 @@ jobs:
             --collect-data customtkinter \
             --collect-binaries just_playback \
             --collect-binaries miniaudio \
+            --collect-all cffi \
+            --hidden-import _cffi_backend \
             sorter.py
 
       - name: Package macOS .app

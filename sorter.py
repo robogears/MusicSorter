@@ -64,7 +64,7 @@ ART_SIZE = 88
 PAGE_SIZE = 30
 PLAYBACK_OK_EXTS = {".mp3", ".flac", ".wav", ".ogg", ".opus"}
 WAVE_BARS = 64
-APP_VERSION = "0.1.3"  # bump per CLAUDE.md before each tag push
+APP_VERSION = "0.1.4"  # bump per CLAUDE.md before each tag push
 
 # Default Last.fm API key shipped with the build. Users who want their own
 # (e.g. to avoid the shared rate limit) can put a different one in config.json.
