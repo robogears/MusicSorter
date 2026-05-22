@@ -87,16 +87,26 @@ DUDE_BPM = 120  # fake tempo for the dance loop
 def app_dir() -> Path:
     """Folder to read/write config.json from.
 
-    Frozen .exe: %APPDATA%\\MusicSorter (standard Windows per-user config).
+    Frozen build: per-user config dir for the OS.
+      Windows: %APPDATA%\\MusicSorter
+      macOS:   ~/Library/Application Support/MusicSorter
+      Linux:   $XDG_CONFIG_HOME/MusicSorter (or ~/.config/MusicSorter)
     Dev (running sorter.py directly): the script's own folder.
     """
     if getattr(sys, "frozen", False):
-        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
-        path = Path(base) / "MusicSorter"
+        if sys.platform == "win32":
+            base = Path(os.environ.get("APPDATA")
+                        or Path.home() / "AppData" / "Roaming")
+        elif sys.platform == "darwin":
+            base = Path.home() / "Library" / "Application Support"
+        else:
+            base = Path(os.environ.get("XDG_CONFIG_HOME")
+                        or Path.home() / ".config")
+        path = base / "MusicSorter"
         try:
             path.mkdir(parents=True, exist_ok=True)
         except OSError:
-            # Couldn't create AppData dir (very rare) — fall back to the .exe's folder.
+            # Couldn't create the per-user dir — fall back to next to the binary.
             path = Path(sys.executable).parent
         return path
     return Path(__file__).parent
@@ -790,11 +800,13 @@ class SorterApp(ctk.CTk):
         self.geometry("960x920")
         self.minsize(820, 640)
         self.configure(fg_color=BG)
-        # Window icon — same little dude as the .exe icon.
+        # Window icon — PNG via iconphoto works on Windows, macOS, and Linux.
+        # Keep a reference on self so Python doesn't garbage-collect the image.
         try:
-            icon = resource_path("icon.ico")
-            if icon.exists():
-                self.iconbitmap(default=str(icon))
+            icon_png = resource_path("icon.png")
+            if icon_png.exists():
+                self._icon_photo = tk.PhotoImage(file=str(icon_png))
+                self.iconphoto(True, self._icon_photo)
         except Exception:
             pass
 
