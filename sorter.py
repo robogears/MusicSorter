@@ -75,8 +75,18 @@ DUDE_DANCE_FRAMES = [
 DUDE_BPM = 120  # fake tempo for the dance loop
 
 
+def app_dir() -> Path:
+    """Folder to read/write config.json from.
+    When running as a PyInstaller --onefile bundle, __file__ points into a temp
+    extraction dir, so we use the .exe's own folder instead.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
 def load_config():
-    cfg_path = Path(__file__).parent / "config.json"
+    cfg_path = app_dir() / "config.json"
     with open(cfg_path, encoding="utf-8") as f:
         return json.load(f)
 
@@ -1142,7 +1152,7 @@ class SorterApp(ctk.CTk):
         self.config_data["scan_subfolders"] = scan_subfolders
         self.config_data["lastfm_api_key"] = api_key
 
-        cfg_path = Path(__file__).parent / "config.json"
+        cfg_path = app_dir() / "config.json"
         try:
             with open(cfg_path, "w", encoding="utf-8") as f:
                 json.dump(self.config_data, f, indent=2)
