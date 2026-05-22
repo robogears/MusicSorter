@@ -69,45 +69,7 @@ pip install -r requirements.txt
 python sorter.py
 ```
 
-### Standalone binary
 
-```bash
-# Windows
-python -m PyInstaller --noconfirm --onefile --windowed --name MusicSorter \
-  --icon icon.ico \
-  --add-data "icon.ico;." --add-data "icon.png;." \
-  --collect-data customtkinter \
-  --collect-binaries just_playback --collect-binaries miniaudio \
-  sorter.py
-
-# macOS
-python -m PyInstaller --noconfirm --onefile --windowed --name MusicSorter \
-  --icon icon.icns \
-  --add-data "icon.icns:." --add-data "icon.png:." \
-  --collect-data customtkinter \
-  --collect-binaries just_playback --collect-binaries miniaudio \
-  sorter.py
-```
-
-### Automated releases
-
-Push any `v*` tag and [`.github/workflows/release.yml`](.github/workflows/release.yml) builds both binaries and creates a **draft** release with notes from [`RELEASE_NOTES.md`](RELEASE_NOTES.md). Review and click Publish on GitHub.
-
-```bash
-# Edit RELEASE_NOTES.md first, then:
-git tag -a v0.1.3 -m "v0.1.3"
-git push origin v0.1.3
-```
-
-## Regenerating the icon
-
-The window/app icon is rendered from ASCII art via [`make_icon.py`](make_icon.py). Tweak the `ICON_TEXT` constant and re-run:
-
-```bash
-python make_icon.py
-```
-
-That refreshes `icon.ico`, `icon.icns`, and `icon.png`.
 
 ## Tech stack
 
