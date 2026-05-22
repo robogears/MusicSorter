@@ -2,6 +2,7 @@
 import base64
 import io
 import json
+import os
 import queue
 import shutil
 import sys
@@ -85,12 +86,29 @@ DUDE_BPM = 120  # fake tempo for the dance loop
 
 def app_dir() -> Path:
     """Folder to read/write config.json from.
-    When running as a PyInstaller --onefile bundle, __file__ points into a temp
-    extraction dir, so we use the .exe's own folder instead.
+
+    Frozen .exe: %APPDATA%\\MusicSorter (standard Windows per-user config).
+    Dev (running sorter.py directly): the script's own folder.
     """
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        path = Path(base) / "MusicSorter"
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Couldn't create AppData dir (very rare) — fall back to the .exe's folder.
+            path = Path(sys.executable).parent
+        return path
     return Path(__file__).parent
+
+
+def resource_path(filename: str) -> Path:
+    """Resolve a bundled resource (icon, etc.) — works in dev and frozen builds."""
+    if getattr(sys, "frozen", False):
+        # PyInstaller --onefile extracts data files under sys._MEIPASS
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        return base / filename
+    return Path(__file__).parent / filename
 
 
 def _default_config() -> dict:
@@ -98,7 +116,9 @@ def _default_config() -> dict:
     return {
         "downloads_path": str(home / "Downloads"),
         "music_root": str(home / "Music"),
-        "lastfm_api_key": DEFAULT_LASTFM_API_KEY,
+        # Empty = use built-in DEFAULT_LASTFM_API_KEY at runtime. Leaving it
+        # blank in config.json means the baked key is never exposed on disk.
+        "lastfm_api_key": "",
         "audio_extensions": list(DEFAULT_AUDIO_EXTS),
         "scan_subfolders": False,
     }
@@ -118,11 +138,19 @@ def load_config():
         return config
     with open(cfg_path, encoding="utf-8") as f:
         config = json.load(f)
-    # Fall back to the baked-in key when the user hasn't supplied one.
+    # Normalize anything that means "use built-in" to an empty string: the
+    # legacy "YOUR_..." placeholder, or a value that happens to equal the
+    # baked-in default. After this, "" => default, anything else => custom.
     key = (config.get("lastfm_api_key") or "").strip()
-    if not key or key.startswith("YOUR_"):
-        config["lastfm_api_key"] = DEFAULT_LASTFM_API_KEY
+    if key.startswith("YOUR_") or key == DEFAULT_LASTFM_API_KEY:
+        key = ""
+    config["lastfm_api_key"] = key
     return config
+
+
+def effective_api_key(config) -> str:
+    """The key to actually send to Last.fm — user's override or the baked default."""
+    return (config.get("lastfm_api_key") or "").strip() or DEFAULT_LASTFM_API_KEY
 
 
 def extract_metadata(filepath: Path):
@@ -739,7 +767,7 @@ class SorterApp(ctk.CTk):
         super().__init__()
         self.config_data = config
         self.music_root = Path(config["music_root"])
-        self.api_key = config["lastfm_api_key"]
+        self.api_key = effective_api_key(config)
         self.all_files = files
         self.total = len(files)
         self.existing_folders = list_genre_folders(self.music_root)
@@ -762,6 +790,13 @@ class SorterApp(ctk.CTk):
         self.geometry("960x920")
         self.minsize(820, 640)
         self.configure(fg_color=BG)
+        # Window icon — same little dude as the .exe icon.
+        try:
+            icon = resource_path("icon.ico")
+            if icon.exists():
+                self.iconbitmap(default=str(icon))
+        except Exception:
+            pass
 
         self._build_ui()
         self._add_rows(min(PAGE_SIZE, self.total))
@@ -1033,7 +1068,7 @@ class SorterApp(ctk.CTk):
     def open_settings(self):
         win = ctk.CTkToplevel(self)
         win.title("Settings")
-        win.geometry("560x440")
+        win.geometry("600x560")
         win.configure(fg_color=BG)
         win.transient(self)
         win.after(50, win.grab_set)
@@ -1093,13 +1128,104 @@ class SorterApp(ctk.CTk):
             wrap, text="Last.fm API key",
             font=ctk.CTkFont(size=11), text_color=TEXT_MUTED,
         ).pack(anchor="w")
-        key_var = ctk.StringVar(value=self.api_key)
-        ctk.CTkEntry(
-            wrap, textvariable=key_var, height=34,
+
+        # Key field state. `original` holds what's currently stored in
+        # config.json (empty string = using the built-in default). `mode` is
+        # "locked" (showing dots) or "editing" (blank, accepts typing).
+        # `will_reset` is set by the Reset button — on Save we'll write "".
+        key_st = {
+            "original": (self.config_data.get("lastfm_api_key") or "").strip(),
+            "mode": "locked",
+            "will_reset": False,
+        }
+
+        key_row = ctk.CTkFrame(wrap, fg_color="transparent")
+        key_row.pack(fill="x", pady=(4, 4))
+
+        key_var = ctk.StringVar()
+        key_entry = ctk.CTkEntry(
+            key_row, textvariable=key_var, height=34,
             fg_color=SURFACE_2, text_color=TEXT,
             border_color=BORDER, border_width=1,
+            show="●",
             font=ctk.CTkFont(family="Consolas", size=11),
-        ).pack(fill="x", pady=(4, 18))
+        )
+        key_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        edit_btn = ctk.CTkButton(
+            key_row, text="Edit", width=70, height=34,
+            fg_color=SURFACE_3, hover_color=SURFACE_4,
+            text_color=TEXT, font=ctk.CTkFont(size=11),
+        )
+        edit_btn.pack(side="left", padx=(0, 6))
+
+        reset_btn = ctk.CTkButton(
+            key_row, text="Reset", width=70, height=34,
+            fg_color="transparent", hover_color=SURFACE_3,
+            border_width=1, border_color=BORDER,
+            text_color=TEXT_MUTED, font=ctk.CTkFont(size=11),
+        )
+
+        key_status_var = ctk.StringVar()
+        ctk.CTkLabel(
+            wrap, textvariable=key_status_var,
+            font=ctk.CTkFont(size=10), text_color=TEXT_DIM,
+            anchor="w", justify="left",
+        ).pack(anchor="w", fill="x", pady=(0, 14))
+
+        def refresh_key_ui():
+            has_custom = bool(key_st["original"]) and not key_st["will_reset"]
+            if key_st["mode"] == "editing":
+                key_var.set("")
+                # Unmask so the user can see what they're typing.
+                key_entry.configure(state="normal", show="")
+                key_entry.focus()
+                edit_btn.configure(text="Cancel")
+                reset_btn.pack_forget()
+                key_status_var.set(
+                    "Type your own Last.fm API key, then click Save below."
+                )
+            else:
+                key_var.set("●" * 16)
+                key_entry.configure(state="readonly", show="●")
+                edit_btn.configure(text="Edit")
+                if has_custom:
+                    reset_btn.pack(side="left")
+                    key_status_var.set("Using your custom Last.fm API key.")
+                elif key_st["will_reset"]:
+                    reset_btn.pack_forget()
+                    key_status_var.set(
+                        "Will revert to the built-in default key on Save."
+                    )
+                else:
+                    reset_btn.pack_forget()
+                    key_status_var.set("Using the built-in default key.")
+
+        def toggle_edit():
+            if key_st["mode"] == "editing":
+                key_st["mode"] = "locked"
+            else:
+                key_st["mode"] = "editing"
+                key_st["will_reset"] = False
+            refresh_key_ui()
+
+        def reset_key():
+            key_st["mode"] = "locked"
+            key_st["will_reset"] = True
+            refresh_key_ui()
+
+        edit_btn.configure(command=toggle_edit)
+        reset_btn.configure(command=reset_key)
+        refresh_key_ui()
+
+        def key_for_save() -> str:
+            """Decide what string to write into config.json for the key field."""
+            if key_st["mode"] == "editing":
+                typed = key_entry.get().strip()
+                return typed  # "" means revert to default
+            if key_st["will_reset"]:
+                return ""
+            return key_st["original"]
 
         ctk.CTkLabel(
             wrap, text="Music-root changes apply immediately. Downloads-path and "
@@ -1108,8 +1234,22 @@ class SorterApp(ctk.CTk):
             wraplength=500, justify="left", anchor="w",
         ).pack(anchor="w", fill="x", pady=(0, 14))
 
+        def reset_paths():
+            """Forget the configured folders — blank out the path fields. The user
+            has to pick new ones (or Cancel) before Save will accept the form.
+            """
+            music_var.set("")
+            dl_var.set("")
+
         btn_row = ctk.CTkFrame(wrap, fg_color="transparent")
         btn_row.pack(fill="x", side="bottom")
+        ctk.CTkButton(
+            btn_row, text="Reset config", width=110, height=36,
+            fg_color="transparent", hover_color=SURFACE_3,
+            border_width=1, border_color=BORDER,
+            text_color=TEXT_MUTED, font=ctk.CTkFont(size=11),
+            command=reset_paths,
+        ).pack(side="left")
         ctk.CTkButton(
             btn_row, text="Cancel", width=90, height=36,
             fg_color="transparent", hover_color=SURFACE_3,
@@ -1122,7 +1262,7 @@ class SorterApp(ctk.CTk):
             text_color=ACCENT_FG, font=ctk.CTkFont(weight="bold"),
             command=lambda: self._save_settings(
                 win, music_var.get(), dl_var.get(),
-                bool(scan_var.get()), key_var.get(),
+                bool(scan_var.get()), key_for_save(),
             ),
         ).pack(side="right")
 
@@ -1136,9 +1276,19 @@ class SorterApp(ctk.CTk):
     def _save_settings(self, win, music_root, downloads_path, scan_subfolders, api_key):
         music_root = (music_root or "").strip()
         downloads_path = (downloads_path or "").strip()
+        # api_key may be empty — that means "use the built-in default" and is fine.
         api_key = (api_key or "").strip()
-        if not api_key:
-            messagebox.showerror("Invalid", "Last.fm API key cannot be empty.",
+
+        if not music_root:
+            messagebox.showerror("Missing path",
+                                 "Music folder can't be empty.\n\n"
+                                 "Pick one with Browse, then click Save.",
+                                 parent=win)
+            return
+        if not downloads_path:
+            messagebox.showerror("Missing path",
+                                 "Downloads folder can't be empty.\n\n"
+                                 "Pick one with Browse, then click Save.",
                                  parent=win)
             return
 
@@ -1196,7 +1346,7 @@ class SorterApp(ctk.CTk):
             return
 
         self.music_root = mr
-        self.api_key = api_key
+        self.api_key = api_key or DEFAULT_LASTFM_API_KEY
 
         if music_changed:
             self.existing_folders = new_folders
@@ -1384,7 +1534,7 @@ class SorterApp(ctk.CTk):
 def collect_files(config):
     downloads = Path(config["downloads_path"])
     if not downloads.is_dir():
-        raise SystemExit(f"Downloads folder not found: {downloads}")
+        return []
     exts = {e.lower() for e in config["audio_extensions"]}
     if config.get("scan_subfolders"):
         candidates = downloads.rglob("*")
@@ -1393,23 +1543,59 @@ def collect_files(config):
     return sorted([p for p in candidates if p.is_file() and p.suffix.lower() in exts])
 
 
+def _startup_error(msg: str):
+    """Show a GUI dialog for fatal startup problems (so --windowed builds aren't silent)."""
+    try:
+        import tkinter as _tk
+        from tkinter import messagebox as _mb
+        root = _tk.Tk()
+        root.withdraw()
+        _mb.showerror("MusicSorter", msg)
+        root.destroy()
+    except Exception:
+        try:
+            with open(app_dir() / "startup_error.txt", "w", encoding="utf-8") as f:
+                f.write(msg)
+        except Exception:
+            pass
+
+
 def main():
-    config = load_config()
-    music_root = Path(config["music_root"])
-    if not music_root.is_dir():
-        print(f"ERROR: Music folder not found: {music_root}")
+    try:
+        config = load_config()
+    except Exception as e:
+        _startup_error(f"Could not load config.json:\n{e}")
         sys.exit(1)
+
+    # Make sure the music root exists — create it if not (harmless if already there).
+    music_root = Path(config["music_root"])
+    try:
+        music_root.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        _startup_error(
+            f"Music folder path is invalid:\n{music_root}\n\n{e}\n\n"
+            f"Edit config.json next to the .exe, or change the path from Settings "
+            f"after launching."
+        )
+        sys.exit(1)
+
+    # Downloads is informational only — if it's missing we still launch with an
+    # empty list so the user can fix it via Settings.
     files = collect_files(config)
-    if not files:
-        print(f"No music files found in {config['downloads_path']}")
-        sys.exit(0)
 
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("dark-blue")
 
-    print(f"Found {len(files)} music file(s). Launching sorter…")
-    app = SorterApp(files, config)
-    app.mainloop()
+    try:
+        app = SorterApp(files, config)
+        app.mainloop()
+    except Exception as e:
+        import traceback
+        _startup_error(
+            "MusicSorter crashed while starting:\n\n"
+            f"{e}\n\n--- Traceback ---\n{traceback.format_exc()}"
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
