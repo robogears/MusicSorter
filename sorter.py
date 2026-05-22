@@ -25,8 +25,10 @@ from mutagen.flac import Picture as FlacPicture
 
 try:
     from just_playback import Playback
-except Exception:
+    _PLAYBACK_IMPORT_ERROR = None
+except Exception as _e:  # capture the real reason for the UI
     Playback = None
+    _PLAYBACK_IMPORT_ERROR = f"{type(_e).__name__}: {_e}"
 
 try:
     import miniaudio
@@ -995,6 +997,11 @@ class SorterApp(ctk.CTk):
         for r in self.rows:
             try:
                 r.folder_menu.configure(values=self.existing_folders)
+                # Auto-fill rows that hadn't picked anything yet — if their
+                # top tag now matches the new folder, re_suggest will set it.
+                # Manual selections (folder_var non-empty) are left alone.
+                if r.ready and not r.folder_var.get().strip():
+                    r.re_suggest()
             except Exception:
                 pass
 
@@ -1240,8 +1247,8 @@ class SorterApp(ctk.CTk):
             return key_st["original"]
 
         ctk.CTkLabel(
-            wrap, text="Music-root changes apply immediately. Downloads-path and "
-                       "subfolder-scan changes take effect after relaunch.",
+            wrap, text="All changes apply immediately — the file list re-scans "
+                       "when the Downloads path or subfolder setting changes.",
             font=ctk.CTkFont(size=10), text_color=TEXT_DIM,
             wraplength=500, justify="left", anchor="w",
         ).pack(anchor="w", fill="x", pady=(0, 14))
@@ -1321,6 +1328,9 @@ class SorterApp(ctk.CTk):
                         win, f"Downloads is not a directory:\n{downloads_path}"))
                     return
                 music_changed = self.music_root != mr
+                old_dl = Path(self.config_data.get("downloads_path", ""))
+                old_scan = bool(self.config_data.get("scan_subfolders", False))
+                downloads_changed = (old_dl != dl or old_scan != scan_subfolders)
                 new_folders = (list_genre_folders(mr) if music_changed
                                else self.existing_folders)
             except Exception as e:
@@ -1329,7 +1339,8 @@ class SorterApp(ctk.CTk):
                 return
 
             self.after(0, lambda: self._apply_settings(
-                win, mr, dl, scan_subfolders, api_key, music_changed, new_folders,
+                win, mr, dl, scan_subfolders, api_key, music_changed,
+                downloads_changed, new_folders,
             ))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1342,7 +1353,7 @@ class SorterApp(ctk.CTk):
             messagebox.showerror("Invalid path", msg)
 
     def _apply_settings(self, win, mr, dl, scan_subfolders, api_key,
-                        music_changed, new_folders):
+                        music_changed, downloads_changed, new_folders):
         self.config_data["music_root"] = str(mr)
         self.config_data["downloads_path"] = str(dl)
         self.config_data["scan_subfolders"] = scan_subfolders
@@ -1370,11 +1381,49 @@ class SorterApp(ctk.CTk):
                         r.re_suggest()
                 except Exception:
                     pass
-            self.refresh_move_buttons()
+
+        if downloads_changed:
+            self._rescan_downloads()
+
+        if downloads_changed and music_changed:
+            self.status_var.set(f"Reloaded — music root → {mr}")
+        elif downloads_changed:
+            self.status_var.set(f"Rescanned {dl}")
+        elif music_changed:
             self.status_var.set(f"Music root → {mr}")
         else:
             self.status_var.set("Settings saved")
+
+        self.refresh_move_buttons()
         win.destroy()
+
+    def _rescan_downloads(self):
+        """Drop all current rows and re-collect files from the (possibly new)
+        downloads path. Stops playback so we never have a row referencing a
+        file we just forgot about."""
+        self.stop_playback()
+        # Drain anything the worker hasn't picked up yet — those rows are about
+        # to be destroyed and the worker would just waste cycles on them.
+        while True:
+            try:
+                self.work_queue.get_nowait()
+            except queue.Empty:
+                break
+        for r in list(self.rows):
+            try:
+                r.destroy()
+            except Exception:
+                pass
+        self.rows.clear()
+        self.rows_added = 0
+        self.move_count = 0
+        self.skip_count = 0
+        self.all_files = collect_files(self.config_data)
+        self.total = len(self.all_files)
+        self._update_progress()
+        self._add_rows(min(PAGE_SIZE, self.total))
+        if self.rows_added < self.total:
+            self.after(60, self._load_chunk)
 
     # ── Volume ──────────────────────────────────────────────────
     def _curved_volume(self) -> float:
@@ -1393,7 +1442,8 @@ class SorterApp(ctk.CTk):
     # ── Playback ────────────────────────────────────────────────
     def play_or_pause(self, row):
         if Playback is None:
-            self.status_var.set("Playback library not available")
+            detail = f" — {_PLAYBACK_IMPORT_ERROR}" if _PLAYBACK_IMPORT_ERROR else ""
+            self.status_var.set(f"Playback library not available{detail}")
             return
         if row.filepath.suffix.lower() not in PLAYBACK_OK_EXTS:
             self.status_var.set(f"Preview not supported for {row.filepath.suffix}")

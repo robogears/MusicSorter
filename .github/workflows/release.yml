@@ -95,12 +95,20 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f
 
+      - name: Check out source (for release notes)
+        uses: actions/checkout@v4
+        with:
+          path: src
+
       - name: Publish to GitHub Releases (as draft)
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/MusicSorter-windows/MusicSorter.exe
             artifacts/MusicSorter-macos/MusicSorter-macos.zip
+          # Curated notes from the repo. The auto-generated commit list gets
+          # appended below them.
+          body_path: src/RELEASE_NOTES.md
           generate_release_notes: true
           # Lands as a draft so you can review the binaries + edit notes
           # before clicking "Publish release" yourself on the Releases page.
