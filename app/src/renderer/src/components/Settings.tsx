@@ -238,7 +238,7 @@ export function Settings({ onClose }: Props): React.JSX.Element {
             </button>
             <div className="text-[11px] text-text-muted">
               {updateResult?.status === 'available' &&
-                `v${updateResult.version} available — see the notice in the header.`}
+                `v${updateResult.version} available — check out the notice in the header.`}
               {updateResult?.status === 'up-to-date' && 'Up to date ✓'}
               {updateResult?.status === 'error' && `Check failed: ${updateResult.message}`}
             </div>

@@ -1,7 +1,7 @@
 {
   "name": "musicsorter",
   "productName": "MusicSorter",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Dark-themed desktop app that sorts your music into genre folders using Last.fm tags.",
   "main": "./out/main/index.js",
   "author": "robogears",

@@ -121,9 +121,12 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
     const asset = (release.assets || []).find((a) => a.name && a.name.includes(wantedSubstr))
     if (asset && asset.browser_download_url) downloadUrl = asset.browser_download_url
   }
+  // Strip the leading "v" so version is consistently "0.X.Y" everywhere
+  // (matches what `app.getVersion()` returns). Display callers prepend "v"
+  // themselves — otherwise the GitHub-tag flavor double-prefixes to "vv0.X.Y".
   return {
     status: 'available',
-    version: release.tag_name,
+    version: release.tag_name.replace(/^v/, ''),
     downloadUrl,
     releaseUrl: release.html_url || ''
   }

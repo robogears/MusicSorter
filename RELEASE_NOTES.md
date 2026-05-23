@@ -1,14 +1,15 @@
-# What's new in v0.2.4
+# What's new in v0.2.5
 
-## Test release
-- Pure version bump to exercise the in-app updater wired in v0.2.0. If you're on v0.2.3, the header pill should light up with *↑ Update to v0.2.4* shortly after launch; on macOS the pill self-installs the DMG, on Windows it opens this release page. No code changes vs v0.2.3.
+## Fixes
+- **No more `vv0.2.4` in Settings.** Update result line was double-prefixing the `v` (GitHub tag stored verbatim with its leading `v`, then the renderer prepended another). Main process now strips the prefix; every display site prepends a single `v` consistently. Affects Settings and the header pill.
+- **Settings copy tweak.** "see the notice in the header" → "check out the notice in the header."
 
 ---
 
 # Install
 
-- **Windows** — download `MusicSorter-0.2.4-setup.exe` and run the installer. SmartScreen may flag the unsigned binary on first launch — choose *More info* → *Run anyway*.
-- **macOS** (Apple Silicon) — download `MusicSorter-0.2.4-arm64.dmg`, mount it, drag `MusicSorter.app` to `/Applications`. First launch: right-click → Open to bypass Gatekeeper.
+- **Windows** — download `MusicSorter-0.2.5-setup.exe` and run the installer. SmartScreen may flag the unsigned binary on first launch — choose *More info* → *Run anyway*.
+- **macOS** (Apple Silicon) — download `MusicSorter-0.2.5-arm64.dmg`, mount it, drag `MusicSorter.app` to `/Applications`. First launch: right-click → Open to bypass Gatekeeper.
 
 Config lives at `%APPDATA%\MusicSorter\config.json` (Windows) or `~/Library/Application Support/MusicSorter/config.json` (macOS).
 
@@ -19,4 +20,4 @@ Config lives at `%APPDATA%\MusicSorter\config.json` (Windows) or `~/Library/Appl
 
 ---
 
-**Full Changelog**: https://github.com/robogears/MusicSorter/compare/v0.2.3...v0.2.4
+**Full Changelog**: https://github.com/robogears/MusicSorter/compare/v0.2.4...v0.2.5

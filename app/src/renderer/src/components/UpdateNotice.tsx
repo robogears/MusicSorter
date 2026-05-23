@@ -68,7 +68,7 @@ export function UpdateNotice(): React.JSX.Element | null {
   let label: string
   let ready = false
   if (!selfInstall) {
-    label = `↑ Update to ${info.version}`
+    label = `↑ Update to v${info.version}`
   } else {
     switch (stage) {
       case 'downloading':
@@ -86,7 +86,7 @@ export function UpdateNotice(): React.JSX.Element | null {
         break
       case 'idle':
       default:
-        label = `↑ Update to ${info.version}`
+        label = `↑ Update to v${info.version}`
     }
   }
 
@@ -100,7 +100,7 @@ export function UpdateNotice(): React.JSX.Element | null {
           ? 'bg-accent text-accent-fg hover:bg-accent-hover'
           : 'bg-nogenre-bg text-nogenre-fg hover:brightness-110'
       }`}
-      title={`Released as ${info.version}`}
+      title={`Released as v${info.version}`}
     >
       {label}
     </button>
