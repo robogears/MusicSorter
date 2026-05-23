@@ -1,0 +1,104 @@
+name: Build and Release (Electron)
+
+# Triggers on any v0.2.* / v0.3.+ / v1+ tag (Electron versions start at 0.2.0
+# — Python builds keep v0.1.x). Adjust the prefix list as the lineage moves.
+on:
+  push:
+    tags:
+      - 'v0.2.*'
+      - 'v0.[3-9].*'
+      - 'v[1-9].*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build renderer + main
+        run: pnpm build
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec electron-builder --win --publish never
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec electron-builder --mac --publish never
+
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MusicSorter-windows
+          path: app/dist/MusicSorter-*-setup.exe
+          if-no-files-found: error
+
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MusicSorter-macos
+          path: app/dist/MusicSorter-*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Publish release (draft)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Publish to GitHub Releases (as draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/MusicSorter-windows/*.exe
+            artifacts/MusicSorter-macos/*.dmg
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: true
+          # ship.md mandates draft-only — user reviews the binaries and
+          # publishes manually from the Releases page.
+          draft: true
+          prerelease: false

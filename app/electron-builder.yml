@@ -1,0 +1,36 @@
+appId: com.robogears.musicsorter
+productName: MusicSorter
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+  # ffmpeg-static ships a platform-specific binary that needs to live on
+  # disk (not inside app.asar) so child_process can exec it.
+  - node_modules/ffmpeg-static/**
+win:
+  executableName: MusicSorter
+nsis:
+  artifactName: MusicSorter-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  category: public.app-category.music
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSDownloadsFolderUsageDescription: MusicSorter reads audio files from your Downloads folder so it can sort them.
+    - NSMusicUsageDescription: MusicSorter moves audio files into your music library folder.
+  notarize: false
+dmg:
+  artifactName: MusicSorter-${version}-${arch}.${ext}
+npmRebuild: false
+# No auto-update; releases are cut by the GitHub Actions workflow, which
+# uploads the artifacts and creates a draft for manual publish.
+publish: null
