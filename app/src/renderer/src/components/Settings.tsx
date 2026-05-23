@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { refreshDownloads } from '../actions'
+import type { UpdateStatus } from '../../../shared/types'
 
 interface Props {
   onClose: () => void
@@ -24,6 +25,26 @@ export function Settings({ onClose }: Props): React.JSX.Element {
   const [scanSubfolders, setScanSubfolders] = useState(config?.scanSubfolders ?? false)
   const [indexed, setIndexed] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  const [appVersion, setAppVersion] = useState('—')
+  const [checking, setChecking] = useState(false)
+  const [updateResult, setUpdateResult] = useState<UpdateStatus | null>(null)
+
+  useEffect(() => {
+    void window.api.getAppVersion().then(setAppVersion)
+  }, [])
+
+  async function onCheckUpdates(): Promise<void> {
+    setChecking(true)
+    setUpdateResult(null)
+    try {
+      const r = await window.api.checkForUpdates()
+      setUpdateResult(r)
+    } catch (err) {
+      setUpdateResult({ status: 'error', message: (err as Error).message })
+    } finally {
+      setChecking(false)
+    }
+  }
 
   // Initial folder count for the indexed display.
   useEffect(() => {
@@ -200,6 +221,32 @@ export function Settings({ onClose }: Props): React.JSX.Element {
           />
           <span className="text-sm text-text">Scan subfolders of Downloads</span>
         </label>
+
+        {/* Updates */}
+        <div className="mb-6">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-text-muted">
+            Updates
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onCheckUpdates}
+              disabled={checking}
+              className="rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-xs font-bold text-text transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {checking ? 'Checking…' : 'Check for updates'}
+            </button>
+            <div className="text-[11px] text-text-muted">
+              {updateResult?.status === 'available' &&
+                `v${updateResult.version} available — see the notice in the header.`}
+              {updateResult?.status === 'up-to-date' && 'Up to date ✓'}
+              {updateResult?.status === 'error' && `Check failed: ${updateResult.message}`}
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-text-dim">
+            Current version: v{appVersion}. The app also checks for updates automatically on launch.
+          </p>
+        </div>
 
         {/* Done */}
         <div className="flex justify-end pt-2">

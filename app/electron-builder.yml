@@ -28,9 +28,17 @@ mac:
     - NSDownloadsFolderUsageDescription: MusicSorter reads audio files from your Downloads folder so it can sort them.
     - NSMusicUsageDescription: MusicSorter moves audio files into your music library folder.
   notarize: false
+  # No Developer ID; we ad-hoc sign via the afterPack hook so arm64 Gatekeeper
+  # accepts the build (otherwise unsigned arm64 builds show as "damaged").
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64]
 dmg:
   artifactName: MusicSorter-${version}-${arch}.${ext}
+afterPack: build/after-pack.js
 npmRebuild: false
-# No auto-update; releases are cut by the GitHub Actions workflow, which
-# uploads the artifacts and creates a draft for manual publish.
+# Releases are cut by the GitHub Actions workflow, which uploads artifacts and
+# creates a draft for manual publish. The in-app updater reads the published
+# /releases/latest endpoint to detect new versions (see src/main/updater.ts).
 publish: null

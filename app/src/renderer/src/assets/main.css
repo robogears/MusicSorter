@@ -30,6 +30,9 @@
   --color-dup-bg: #3a2a18;
   --color-dup-fg: #f0b96e;
 
+  --color-nogenre-bg: #2a2418;
+  --color-nogenre-fg: #d4a017;
+
   --color-wave-unplayed: #3a3a3a;
   --color-wave-preview: #777777;
   --color-wave-played: #ffffff;

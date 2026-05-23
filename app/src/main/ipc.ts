@@ -2,12 +2,19 @@
  * IPC handler registration. The preload script exposes typed wrappers around
  * the channels declared here; see src/preload/index.ts.
  */
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { app, ipcMain, dialog, BrowserWindow } from 'electron'
 import * as fs from './fs'
 import * as config from './config'
 import { readMetadata } from './metadata'
 import { getTags } from './lastfm'
 import { computePeaksMain } from './peaks'
+import {
+  applyUpdate,
+  canSelfInstall,
+  downloadUpdate,
+  getUpdateStatus,
+  openExternal
+} from './updater'
 import type { Config, MoveResult } from '../shared/types'
 
 export function registerIpc(): void {
@@ -59,4 +66,26 @@ export function registerIpc(): void {
   // ── Config ────────────────────────────────────────────────────
   ipcMain.handle('config:load', () => config.loadConfig())
   ipcMain.handle('config:save', (_e, cfg: Config) => config.saveConfig(cfg))
+
+  // ── Updater ───────────────────────────────────────────────────
+  // The manual check (from Settings) shares the same notice surface as the
+  // automatic launch check — emit `update:available` so the UI updates the
+  // same way regardless of how the check was triggered.
+  ipcMain.handle('update:check', async () => {
+    const result = await getUpdateStatus()
+    if (result.status === 'available') {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('update:available', result)
+      }
+    }
+    return result
+  })
+  ipcMain.handle('update:can-self-install', () => canSelfInstall())
+  ipcMain.handle('update:download', (_e, url: string) => downloadUpdate(url))
+  ipcMain.handle('update:apply', () => applyUpdate())
+  ipcMain.handle('shell:open-external', (_e, url: string) => {
+    openExternal(url)
+  })
+  ipcMain.handle('app:version', () => app.getVersion())
 }

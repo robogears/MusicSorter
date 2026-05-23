@@ -12,8 +12,7 @@ import { Dude } from './components/Dude'
 import { VolumeSlider } from './components/VolumeSlider'
 import { Settings } from './components/Settings'
 import { ModalHost } from './components/Dialogs'
-
-const APP_VERSION = '0.2.0-dev'
+import { UpdateNotice } from './components/UpdateNotice'
 
 export default function App(): React.JSX.Element {
   const config = useStore((s) => s.config)
@@ -27,6 +26,13 @@ export default function App(): React.JSX.Element {
   const setStatus = useStore((s) => s.setStatus)
   const setScanning = useStore((s) => s.setScanning)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState('—')
+
+  // Pull the version of record from package.json (via IPC) so the displayed
+  // version always matches what the updater compares against.
+  useEffect(() => {
+    void window.api.getAppVersion().then(setAppVersion)
+  }, [])
 
   // Initial load + scan.
   useEffect(() => {
@@ -94,7 +100,8 @@ export default function App(): React.JSX.Element {
           ♪
         </div>
         <div className="text-lg font-bold tracking-tight">robogears MusicSorter</div>
-        <div className="text-[11px] font-medium text-[#c1a87a]">v{APP_VERSION}</div>
+        <div className="text-[11px] font-medium text-[#c1a87a]">v{appVersion}</div>
+        <UpdateNotice />
         <div className="ml-auto flex items-center gap-4">
           <VolumeSlider />
           <button
@@ -159,12 +166,7 @@ export default function App(): React.JSX.Element {
             )}
           </div>
         ) : (
-          <div
-            className="grid gap-3 pb-12"
-            // Fixed 3 columns. Cards keep their existing proportions; only the
-            // available width per card shrinks as the window narrows.
-            style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
-          >
+          <div className="grid gap-3 pb-12 grid-cols-1 min-[1024px]:grid-cols-2 min-[1520px]:grid-cols-3 min-[2000px]:grid-cols-4 min-[2500px]:grid-cols-5 min-[2990px]:grid-cols-6 min-[3480px]:grid-cols-7">
             {rows.map((row) => (
               <Row key={row.id} row={row} />
             ))}

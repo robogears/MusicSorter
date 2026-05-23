@@ -4,6 +4,7 @@ import { promises as fsp } from 'node:fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
+import { setupUpdater } from './updater'
 
 const AUDIO_MIME_TYPES: Record<string, string> = {
   mp3: 'audio/mpeg',
@@ -33,10 +34,14 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 function createWindow(): void {
-  // Create the browser window.
+  // Default opens at 3 columns (>1100px). minWidth keeps a single card from
+  // squishing past usability; the responsive grid in App.tsx steps the column
+  // count down to 2 below 1100px and to 1 below 768px.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1180,
+    height: 760,
+    minWidth: 480,
+    minHeight: 540,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -48,6 +53,7 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    setupUpdater(mainWindow)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {

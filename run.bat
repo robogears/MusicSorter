@@ -1,3 +1,4 @@
 @echo off
-"%LOCALAPPDATA%\Programs\Python\Python312\python.exe" "%~dp0sorter.py"
+cd /d "%~dp0app"
+pnpm dev
 pause

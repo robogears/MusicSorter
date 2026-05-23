@@ -6,7 +6,6 @@ import { useStore, type RowState } from '../store'
 import { createFolderForRow, deleteRow, moveRow } from '../actions'
 import { audio } from '../audio'
 import { Waveform } from './Waveform'
-import { StaticWave } from './StaticWave'
 
 const PLAYABLE_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.opus', '.m4a', '.aac', '.mp4'])
 
@@ -27,7 +26,6 @@ export function Row({ row }: Props): React.JSX.Element {
   const playingRowId = useStore((s) => s.playingRowId)
   const isAudioPlaying = useStore((s) => s.isAudioPlaying)
   const [removing, setRemoving] = useState<'move' | 'delete' | null>(null)
-  const [pendingSeek, setPendingSeek] = useState<number | null>(null)
 
   const isPlaying = playingRowId === row.id
   const dimmed = (row.skipped || row.isDuplicate) && !removing
@@ -56,23 +54,23 @@ export function Row({ row }: Props): React.JSX.Element {
     if (isPlaying) {
       audio.togglePlay()
     } else {
-      setPendingSeek(null)
       useStore.getState().setPlayingRowId(row.id)
+      void audio.play(row.file.path, 0)
     }
   }
 
-  function onStaticWaveClick(fraction: number): void {
+  function onPlayAt(fraction: number): void {
     if (!canPlay) {
       useStore.getState().setStatus(`Preview not supported for ${ext}`)
       return
     }
-    setPendingSeek(fraction)
     useStore.getState().setPlayingRowId(row.id)
+    void audio.play(row.file.path, fraction)
   }
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border border-transparent transition-all duration-200 ${
+      className={`grid grid-rows-[1fr_auto_auto] overflow-hidden rounded-xl border border-transparent transition-all duration-200 ${
         removing === 'move'
           ? 'bg-success-flash opacity-0'
           : removing === 'delete'
@@ -121,6 +119,14 @@ export function Row({ row }: Props): React.JSX.Element {
             </div>
           )}
 
+          {!row.isDuplicate && row.tagsChecked && row.tags.length === 0 && (
+            <div className="mt-1">
+              <span className="rounded-md bg-nogenre-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-nogenre-fg">
+                Can't find genre from Last.fm
+              </span>
+            </div>
+          )}
+
           {row.tags.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1.5">
               {row.tags.slice(0, 5).map((t) => (
@@ -131,12 +137,6 @@ export function Row({ row }: Props): React.JSX.Element {
                   {t.name}
                 </span>
               ))}
-            </div>
-          )}
-
-          {row.tagLookupError && row.tags.length === 0 && (
-            <div className="mt-1 text-[10px] text-danger">
-              Last.fm lookup failed: {row.tagLookupError}
             </div>
           )}
 
@@ -183,20 +183,7 @@ export function Row({ row }: Props): React.JSX.Element {
           {isPlaying && isAudioPlaying ? '⏸' : '▶'}
         </button>
         <div className="min-w-0 flex-1">
-          {isPlaying ? (
-            <Waveform
-              rowId={row.id}
-              filepath={row.file.path}
-              initialSeek={pendingSeek}
-              onSeekApplied={() => setPendingSeek(null)}
-            />
-          ) : (
-            <StaticWave
-              seed={row.file.path}
-              peaks={row.peaks}
-              onClickAt={canPlay ? onStaticWaveClick : undefined}
-            />
-          )}
+          <Waveform row={row} canPlay={canPlay} onPlayAt={onPlayAt} />
         </div>
       </div>
 

@@ -21,8 +21,15 @@ Thumbs.db
 # Commit config.json.example as a template instead.
 config.json
 
-# PyInstaller build output (the .exe ships as a GitHub release asset,
-# not committed to the repo).
-build/
-dist/
+# Electron build outputs (artifacts ship as GitHub release assets, not
+# committed). NOTE: `app/build/` is intentionally NOT ignored — it holds
+# build resources (icons, entitlements, afterPack hook).
+app/out/
+app/dist/
+
+# Leftover output dirs from the retired Python build, still on disk for
+# anyone who packaged locally before the retirement. Anchored with `/` so
+# the patterns don't shadow `app/build/`.
+/build/
+/dist/
 *.spec

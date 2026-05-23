@@ -42,3 +42,18 @@ export interface TagLookupResult {
   /** Human-readable failure reason when tags is empty. */
   error: string | null
 }
+
+export type UpdateStatus =
+  | { status: 'available'; version: string; downloadUrl: string; releaseUrl: string }
+  | { status: 'up-to-date'; version: string }
+  | { status: 'error'; message: string }
+
+export interface UpdateDownloadProgress {
+  downloaded: number
+  total: number
+}
+
+export interface UpdateActionResult {
+  ok: boolean
+  error?: string
+}

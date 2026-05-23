@@ -55,5 +55,6 @@ Everything is editable from the Settings dialog (cog icon):
 - **Music root folder** — where genre subfolders live; destination of moves
 - **Downloads folder** — source folder for the scan
 - **Scan subfolders** — recurse into Downloads subfolders
-- **Last.fm API key** — masked field with Edit / Reset; leave blank to use the built-in default. Get your own at [last.fm/api](https://www.last.fm/api/account/create) if you hit the shared rate limit.
 - **Clear** (next to each path) — forgets that path so you can re-point the app at a fresh folder
+
+Genre tags come from Last.fm via a shared API key built into the app — no setup required. The key is shared across every install, so if you ever hit the rate limit, lookups silently fall back to artist-level tags. (If you want your own key for any reason, you can get one at [last.fm/api](https://www.last.fm/api/account/create).)

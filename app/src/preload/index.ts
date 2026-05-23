@@ -1,6 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { AudioFile, AudioMetadata, Config, MoveResult, TagLookupResult } from '../shared/types'
+import type {
+  AudioFile,
+  AudioMetadata,
+  Config,
+  MoveResult,
+  TagLookupResult,
+  UpdateActionResult,
+  UpdateDownloadProgress,
+  UpdateStatus
+} from '../shared/types'
 
 /**
  * Typed renderer-side API. The matching handlers live in src/main/ipc.ts.
@@ -30,7 +39,34 @@ const api = {
     ipcRenderer.invoke('peaks:compute', path, nBars),
 
   loadConfig: (): Promise<Config> => ipcRenderer.invoke('config:load'),
-  saveConfig: (cfg: Config): Promise<void> => ipcRenderer.invoke('config:save', cfg)
+  saveConfig: (cfg: Config): Promise<void> => ipcRenderer.invoke('config:save', cfg),
+
+  // Updater
+  checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
+  canSelfInstall: (): Promise<boolean> => ipcRenderer.invoke('update:can-self-install'),
+  downloadUpdate: (url: string): Promise<UpdateActionResult> =>
+    ipcRenderer.invoke('update:download', url),
+  applyUpdate: (): Promise<UpdateActionResult> => ipcRenderer.invoke('update:apply'),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:open-external', url),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+
+  onUpdateAvailable: (
+    cb: (payload: Extract<UpdateStatus, { status: 'available' }>) => void
+  ): (() => void) => {
+    const handler = (
+      _e: unknown,
+      payload: Extract<UpdateStatus, { status: 'available' }>
+    ): void => cb(payload)
+    ipcRenderer.on('update:available', handler)
+    return () => ipcRenderer.off('update:available', handler)
+  },
+  onUpdateDownloadProgress: (
+    cb: (payload: UpdateDownloadProgress) => void
+  ): (() => void) => {
+    const handler = (_e: unknown, payload: UpdateDownloadProgress): void => cb(payload)
+    ipcRenderer.on('update:download-progress', handler)
+    return () => ipcRenderer.off('update:download-progress', handler)
+  }
 }
 
 export type MusicSorterAPI = typeof api

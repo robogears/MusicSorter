@@ -20,9 +20,6 @@ importers:
       music-metadata:
         specifier: ^11.12.3
         version: 11.12.3
-      wavesurfer.js:
-        specifier: ^7.12.7
-        version: 7.12.7
       zustand:
         specifier: ^5.0.13
         version: 5.0.13(@types/react@19.2.15)(react@19.2.6)
@@ -2836,9 +2833,6 @@ packages:
         optional: true
       yaml:
         optional: true
-
-  wavesurfer.js@7.12.7:
-    resolution: {integrity: sha512-TIe7hB6OCZysNOZ2cn2NR8Qpko22POWel6rauNcqOammFoH65NYQUM35unNLLMIlUMVYvjJ6w/TTl/G/m+w0nA==}
 
   which-boxed-primitive@1.1.1:
     resolution: {integrity: sha512-TbX3mj8n0odCBFVlY8AxkqcHASw3L60jIuF8jFP78az3C2YhmGvqbHBpAjTRH2/xqYunrJ9g1jSyjCjpoWzIAA==}
@@ -5946,8 +5940,6 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.7.0
       lightningcss: 1.32.0
-
-  wavesurfer.js@7.12.7: {}
 
   which-boxed-primitive@1.1.1:
     dependencies:

@@ -48,8 +48,13 @@ export async function enrichAll(rows: RowState[]): Promise<void> {
           tagLookupError: result.error,
           suggestedFolder: folder,
           topTag,
-          folder: folder ?? ''
+          folder: folder ?? '',
+          tagsChecked: true
         })
+      } else {
+        // No artist → no point querying Last.fm; flag as "looked up" so the
+        // "can't find genre" badge can render instead of staying ambiguous.
+        updateRow(row.id, { tagsChecked: true })
       }
     } catch (err) {
       console.error('enrich failed for', row.file.path, err)

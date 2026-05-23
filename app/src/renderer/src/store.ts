@@ -19,6 +19,10 @@ export interface RowState {
   topTag: string | null
   folder: string // user-selected (or pre-filled from suggestion)
   status: RowStatus
+  /** True once the Last.fm tag lookup has resolved (success, error, or skipped
+   *  because there's no artist to query with). Distinguishes "no tags yet,
+   *  still loading" from "lookup returned nothing." */
+  tagsChecked: boolean
   isDuplicate: boolean
   skipped: boolean
   peaks: number[] | null // decoded amplitude envelope, normalized 0..1
@@ -147,6 +151,7 @@ export function makeInitialRow(file: AudioFile): RowState {
     topTag: null,
     folder: '',
     status: 'loading',
+    tagsChecked: false,
     isDuplicate: false,
     skipped: false,
     peaks: null

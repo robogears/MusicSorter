@@ -9,6 +9,11 @@ import { useStore, makeInitialRow, type RowState } from './store'
 import { cancelEnrichment, enrichAll } from './enrich'
 import { preloadPeaks } from './peaks'
 import { showConfirm, showPrompt } from './dialogs'
+import { audio } from './audio'
+
+function stopAudioIfPlaying(rowId: string): void {
+  if (useStore.getState().playingRowId === rowId) audio.stop()
+}
 
 function joinForward(...parts: string[]): string {
   return parts
@@ -54,6 +59,7 @@ export async function moveRow(row: RowState, opts: MoveOpts = {}): Promise<boole
       return false
     }
     setStatus(`Moved → ${row.folder}/${row.file.name}`)
+    stopAudioIfPlaying(row.id)
     removeRow(row.id)
     return true
   } catch (err) {
@@ -73,6 +79,7 @@ export async function deleteRow(row: RowState): Promise<boolean> {
   try {
     await window.api.deleteFile(row.file.path)
     useStore.getState().setStatus(`Deleted ${row.file.name}`)
+    stopAudioIfPlaying(row.id)
     useStore.getState().removeRow(row.id)
     return true
   } catch (err) {
@@ -127,6 +134,7 @@ export async function refreshDownloads(): Promise<void> {
   const { config, setRows, setStatus } = useStore.getState()
   if (!config) return
   cancelEnrichment()
+  audio.stop()
   setRows([])
   setStatus('Re-scanning…')
   try {
