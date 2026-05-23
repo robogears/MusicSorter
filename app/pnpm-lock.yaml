@@ -20,6 +20,9 @@ importers:
       ieee754:
         specifier: ^1.2.1
         version: 1.2.1
+      ms:
+        specifier: ^2.1.3
+        version: 2.1.3
       music-metadata:
         specifier: ^11.12.3
         version: 11.12.3
