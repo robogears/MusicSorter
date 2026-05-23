@@ -37,10 +37,12 @@ except Exception:
 
 
 # ── Theme (monochrome) ──────────────────────────────────────────
-BG = "#0a0a0a"
-SURFACE_2 = "#141414"
-SURFACE_3 = "#1f1f1f"
-SURFACE_4 = "#2a2a2a"
+BG = "#000000"
+SURFACE_2 = "#0e0e0e"
+SURFACE_3 = "#1a1a1a"
+SURFACE_4 = "#262626"
+DUP_BADGE_BG = "#3a2a18"
+DUP_BADGE_FG = "#f0b96e"
 BORDER = "#262626"
 TEXT = "#ffffff"
 TEXT_MUTED = "#8a8a8a"
@@ -376,6 +378,26 @@ def fmt_time(seconds: float) -> str:
     return f"{m}:{s:02d}"
 
 
+def bind_press_pop(btn, normal_color: str, pressed_color: str):
+    """Briefly tint a button's text on mouse-down for tactile feedback.
+    Operating on text_color (not fg_color) so it doesn't fight CTkButton's
+    built-in hover behavior."""
+    def on_press(_e):
+        try:
+            btn.configure(text_color=pressed_color)
+        except Exception:
+            pass
+
+    def on_release(_e):
+        try:
+            btn.after(80, lambda: btn.configure(text_color=normal_color))
+        except Exception:
+            pass
+
+    btn.bind("<ButtonPress-1>", on_press, add="+")
+    btn.bind("<ButtonRelease-1>", on_release, add="+")
+
+
 # ── File row ────────────────────────────────────────────────────
 class FileRow(ctk.CTkFrame):
     def __init__(self, parent, filepath: Path, app):
@@ -386,6 +408,7 @@ class FileRow(ctk.CTkFrame):
         self.top_tag = None
         self.ready = False
         self.skipped = False
+        self.is_duplicate = False
         self._art_image = None
         self.wave_data = None
         self.duration = 0.0
@@ -435,17 +458,25 @@ class FileRow(ctk.CTkFrame):
         )
         self.filename_label.grid(row=2, column=0, sticky="ew", pady=(2, 6))
 
+        # Badge slot — used for "ALREADY IN LIBRARY" and similar status pills.
+        # Stays empty (zero height) when there's nothing to show.
+        self.badge_frame = ctk.CTkFrame(info, fg_color="transparent")
+        self.badge_frame.grid(row=3, column=0, sticky="ew")
+
         self.chips_frame = ctk.CTkFrame(info, fg_color="transparent")
-        self.chips_frame.grid(row=3, column=0, sticky="ew")
+        self.chips_frame.grid(row=4, column=0, sticky="ew", pady=(4, 0))
 
         self.skip_btn = ctk.CTkButton(
-            top, text="Skip", width=68, height=28,
+            top, text="Skip", width=78, height=32,
             fg_color="transparent", hover_color=SURFACE_3,
             border_width=1, border_color=BORDER,
-            text_color=TEXT_MUTED, font=ctk.CTkFont(size=11),
+            text_color=TEXT_MUTED,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=8,
             command=self.toggle_skip,
         )
         self.skip_btn.grid(row=0, column=1, sticky="ne", padx=(8, 0))
+        bind_press_pop(self.skip_btn, TEXT_MUTED, TEXT)
 
         # ── Bottom section: play | waveform | time ─────────────
         bottom = ctk.CTkFrame(self, fg_color="transparent")
@@ -504,21 +535,40 @@ class FileRow(ctk.CTkFrame):
         )
         self.folder_menu.grid(row=0, column=1, padx=(8, 6))
 
-        ctk.CTkButton(
-            ctrl, text="+ New", width=64, height=32,
+        new_btn = ctk.CTkButton(
+            ctrl, text="+ New", width=78, height=36,
             fg_color=SURFACE_3, hover_color=SURFACE_4,
-            text_color=TEXT, font=ctk.CTkFont(size=11),
+            text_color=TEXT,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=8,
             command=self.create_new_folder,
-        ).grid(row=0, column=2)
+        )
+        new_btn.grid(row=0, column=2)
+        bind_press_pop(new_btn, TEXT, DUP_BADGE_FG)
+
+        delete_btn = ctk.CTkButton(
+            ctrl, text="Delete", width=82, height=36,
+            fg_color="transparent", hover_color="#2a1010",
+            border_width=1, border_color=DANGER,
+            text_color=DANGER,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=8,
+            command=self.delete_file,
+        )
+        delete_btn.grid(row=0, column=3, padx=(8, 0))
+        bind_press_pop(delete_btn, DANGER, "#ff7066")
 
         self.move_one_btn = ctk.CTkButton(
-            ctrl, text="Move →", width=80, height=32,
-            fg_color="transparent", hover_color=SURFACE_3,
-            border_width=1, border_color=BORDER,
-            text_color=TEXT, font=ctk.CTkFont(size=11),
+            ctrl, text="Move →", width=96, height=36,
+            fg_color=SURFACE_3, hover_color=SURFACE_4,
+            border_width=1, border_color="#3a3a3a",
+            text_color=TEXT,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=8,
             command=self.move_one,
         )
-        self.move_one_btn.grid(row=0, column=3, padx=(8, 0))
+        self.move_one_btn.grid(row=0, column=4, padx=(8, 0))
+        bind_press_pop(self.move_one_btn, TEXT, SUCCESS)
 
     # ── Lifecycle / state ───────────────────────────────────────
     def is_queued(self) -> bool:
@@ -740,15 +790,23 @@ class FileRow(ctk.CTkFrame):
 
     def toggle_skip(self):
         self.skipped = not self.skipped
+        self._apply_skipped_visual()
+        self.app.refresh_move_buttons()
+
+    def _apply_skipped_visual(self):
+        """Push the skipped/active styling onto the row's widgets."""
         if self.skipped:
             if self.app.playing_row is self:
                 self.app.stop_playback()
             self.configure(fg_color=BG)
             self.title_label.configure(text_color=TEXT_DIM)
             self.artist_label.configure(text_color=TEXT_DIM)
-            self.filename_label.configure(text_color="#3a3a3a")
+            self.filename_label.configure(text_color="#2a2a2a")
             self.suggest_label.configure(text_color=TEXT_DIM)
-            self.skip_btn.configure(text="Undo", text_color=TEXT)
+            # Button label tracks intent: dup rows say "Add" (to opt in),
+            # plain rows say "Undo" (to take the skip back).
+            label = "Add" if self.is_duplicate else "Undo"
+            self.skip_btn.configure(text=label, text_color=TEXT)
         else:
             self.configure(fg_color=SURFACE_2)
             self.title_label.configure(text_color=TEXT)
@@ -759,6 +817,30 @@ class FileRow(ctk.CTkFrame):
                 folder = self.folder_var.get()
                 if folder:
                     self.suggest_label.configure(text_color=SUCCESS)
+
+    def set_duplicate(self, is_dup: bool):
+        """Mark/unmark this row as already present in the music library.
+        Duplicates default to skipped so they don't sneak into batch moves —
+        the user has to click 'Add' to opt them in.
+        """
+        if is_dup == self.is_duplicate:
+            return
+        self.is_duplicate = is_dup
+        # Clear any existing pill
+        for w in self.badge_frame.winfo_children():
+            w.destroy()
+        if is_dup:
+            ctk.CTkLabel(
+                self.badge_frame, text="  ALREADY IN LIBRARY  ",
+                fg_color=DUP_BADGE_BG, text_color=DUP_BADGE_FG,
+                corner_radius=10,
+                font=ctk.CTkFont(size=10, weight="bold"), height=22,
+            ).pack(side="left", pady=(4, 0))
+            # Default to skipped so the batch Move ignores it.
+            self.skipped = True
+        else:
+            self.skipped = False
+        self._apply_skipped_visual()
         self.app.refresh_move_buttons()
 
     def create_new_folder(self):
@@ -781,9 +863,10 @@ class FileRow(ctk.CTkFrame):
             self.app.add_folder(name)
         self.folder_var.set(name)
 
-    def flash_and_remove(self, on_done):
-        self.configure(fg_color=SUCCESS_FLASH)
-        self.title_label.configure(text_color="#a3e6b0")
+    def flash_and_remove(self, on_done, flash_color: str = SUCCESS_FLASH,
+                         text_color: str = "#a3e6b0"):
+        self.configure(fg_color=flash_color)
+        self.title_label.configure(text_color=text_color)
         def finish():
             try:
                 self.destroy()
@@ -791,6 +874,37 @@ class FileRow(ctk.CTkFrame):
                 pass
             on_done()
         self.after(160, finish)
+
+    def delete_file(self):
+        """Permanently delete the file from disk after confirming."""
+        if not messagebox.askyesno(
+            "Delete file",
+            f"Permanently delete this file?\n\n{self.filepath.name}\n\n"
+            f"This can't be undone.",
+            parent=self.app, icon="warning",
+        ):
+            return
+        if self.app.playing_row is self:
+            self.app.stop_playback()
+        try:
+            self.filepath.unlink()
+        except OSError as e:
+            messagebox.showerror("Delete failed", str(e), parent=self.app)
+            return
+        self.app.skip_count += 1
+        self.app.status_var.set(f"Deleted {self.filepath.name}")
+
+        def after_destroy():
+            try:
+                self.app.rows.remove(self)
+            except ValueError:
+                pass
+            self.app._update_progress()
+            self.app.refresh_move_buttons()
+
+        # Red flash so the visual matches the destructive intent.
+        self.flash_and_remove(after_destroy,
+                              flash_color="#3a1010", text_color="#ff8a80")
 
     def move_one(self):
         """Move just this row's file. Silent no-op if no folder is set."""
@@ -845,6 +959,9 @@ class SorterApp(ctk.CTk):
         self.rows_added = 0
         self.work_queue = queue.Queue()
         self.worker_stop = threading.Event()
+        # Lowercased filenames already present anywhere under music_root.
+        # Used to flag rows as duplicates so they don't auto-queue for moving.
+        self.library_files: set[str] = set()
         self.playback = None
         self.playing_row = None
         self.playback_timer_id = None
@@ -873,6 +990,7 @@ class SorterApp(ctk.CTk):
         if self.rows_added < self.total:
             self.after(60, self._load_chunk)
         threading.Thread(target=self._worker, daemon=True).start()
+        threading.Thread(target=self._scan_library, daemon=True).start()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -968,6 +1086,16 @@ class SorterApp(ctk.CTk):
             queue_hdr, text="QUEUE",
             font=ctk.CTkFont(size=10, weight="bold"), text_color=TEXT_MUTED,
         ).pack(side="left")
+        refresh_btn = ctk.CTkButton(
+            queue_hdr, text="Refresh", width=68, height=22,
+            fg_color="transparent", hover_color=SURFACE_3,
+            text_color=TEXT_MUTED,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            corner_radius=6,
+            command=self._rescan_downloads,
+        )
+        refresh_btn.pack(side="left", padx=(14, 0))
+        bind_press_pop(refresh_btn, TEXT_MUTED, TEXT)
         ctk.CTkLabel(
             queue_hdr, textvariable=self.progress_var,
             font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
@@ -1058,6 +1186,11 @@ class SorterApp(ctk.CTk):
                     continue
                 artist, title = extract_metadata(row.filepath)
                 self.after(0, lambda r=row, a=artist, t=title: r.set_metadata(a, t))
+                # Flag duplicates immediately so the user sees the badge as
+                # rows light up (library scan may finish later — the rescan
+                # pass in _scan_library will catch anything we missed here).
+                if row.filepath.name.lower() in self.library_files:
+                    self.after(0, lambda r=row: r.set_duplicate(True))
                 art = extract_album_art(row.filepath)
                 if art is not None:
                     self.after(0, lambda r=row, a=art: r.set_art(a))
@@ -1072,6 +1205,38 @@ class SorterApp(ctk.CTk):
             except Exception:
                 pass
             time.sleep(0.20)
+
+    def _scan_library(self):
+        """Walk music_root and index every audio file's name (lowercased) so
+        we can flag duplicates in Downloads. Runs in its own daemon thread."""
+        exts = {e.lower() for e in self.config_data.get("audio_extensions", [])}
+        names: set[str] = set()
+        try:
+            for p in self.music_root.rglob("*"):
+                if self.worker_stop.is_set():
+                    return
+                try:
+                    if p.is_file() and p.suffix.lower() in exts:
+                        names.add(p.name.lower())
+                except OSError:
+                    continue
+        except Exception:
+            return
+        self.library_files = names
+        # Re-evaluate any rows that loaded before the index existed.
+        self.after(0, self._recheck_duplicates)
+        self.after(0, lambda: self.status_var.set(
+            f"Library indexed: {len(names)} tracks"
+        ))
+
+    def _recheck_duplicates(self):
+        for r in list(self.rows):
+            try:
+                if (not r.is_duplicate
+                        and r.filepath.name.lower() in self.library_files):
+                    r.set_duplicate(True)
+            except Exception:
+                pass
 
     def _estimate_duration(self, filepath: Path) -> float:
         try:
@@ -1414,6 +1579,15 @@ class SorterApp(ctk.CTk):
                         r.re_suggest()
                 except Exception:
                     pass
+            # Old duplicate index is stale — re-scan the new library in bg
+            self.library_files = set()
+            for r in self.rows:
+                try:
+                    if r.is_duplicate:
+                        r.set_duplicate(False)
+                except Exception:
+                    pass
+            threading.Thread(target=self._scan_library, daemon=True).start()
 
         if downloads_changed:
             self._rescan_downloads()
